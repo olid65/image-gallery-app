@@ -109,7 +109,7 @@
 <body>
     <!-- Bandeau avec l'image zones.jpg -->
     <div id="header-banner">
-        <img src="image_generale_html/zones.jpg" alt="Zones">
+        <img src="src/image_generale_html/zones.jpg" alt="Zones">
     </div>
 
     <div id="main-content">
@@ -262,7 +262,7 @@
                     const zoneNum = img.zone.replace('zone', '');
                     const displayZoneNum = parseInt(zoneNum,10);
                     card.innerHTML = `
-                        <img src="vignettes/${img.filename}" alt="${img.filename}" loading="lazy">
+                        <img src="src/vignettes/${img.filename}" alt="${img.filename}" loading="lazy">
                         <div class="image-info">
                             <p>Zone: ${displayZoneNum}</p>
                             <p>Date: ${img.date}</p>
@@ -290,7 +290,7 @@
                 const len = this.filteredImages.length;
                 const idxs = [index, (index - 1 + len) % len, (index + 1) % len];
                 for (const i of idxs) {
-                    const src = 'images/' + this.filteredImages[i].filename;
+                    const src = 'src/images/' + this.filteredImages[i].filename;
                     this.loadImageAsync(src).catch(() => {});
                 }
             }
@@ -308,7 +308,7 @@
                     return;
                 }
 
-                const src = 'images/' + imgMeta.filename;
+                const src = 'src/images/' + imgMeta.filename;
                 const lightboxImgEl = document.getElementById('lightbox-image');
                 
                 try {
