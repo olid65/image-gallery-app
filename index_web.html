@@ -329,7 +329,8 @@
 
                 this.preloadAdjacent(this.currentLightboxIndex);
 
-                this.zoomLevel = 1;
+                // Keep zoom level but reset pan for new image
+                // this.zoomLevel = 1; // Keep zoom
                 this.panX = 0;
                 this.panY = 0;
                 this.updateImageTransform();
