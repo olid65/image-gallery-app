@@ -1,0 +1,870 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Galerie d'images - Version Web</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+
+        #header-banner {
+            width: 100%;
+            background-color: #f5f5f5;
+            padding: 10px 0;
+            text-align: center;
+            border-bottom: 1px solid #ddd;
+        }
+
+        #header-banner img {
+            max-width: 100%;
+            height: auto;
+            display: block;
+        }
+
+        #main-content { margin: 20px; }
+
+        #filter-options {
+            margin-bottom: 20px;
+            padding: 15px;
+            background-color: #f5f5f5;
+            border-radius: 5px;
+        }
+
+        .filter-section { margin: 10px 0; }
+
+        .checkbox-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .checkbox-item {
+            display: flex;
+            align-items: center;
+            margin-right: 15px;
+        }
+
+        #image-gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+        }
+
+        .image-card {
+            border: 1px solid #ddd;
+            padding: 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .image-card:hover { transform: scale(1.05); }
+
+        .image-card img { width: 100%; height: auto; }
+
+        .image-info {
+            margin-top: 10px;
+            font-size: 0.9em;
+            color: #666;
+        }
+
+        /* Lightbox styles */
+        #lightbox {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.9);
+            z-index: 1000;
+        }
+        #lightbox.active { display: flex; justify-content: center; align-items: center; }
+        .lightbox-content {
+            position: relative;
+            max-width: 90%;
+            max-height: 90%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .lightbox-image { max-width: 100%; max-height: 80vh; object-fit: contain; cursor: zoom-in; transition: transform 0.1s ease; }
+        .lightbox-close {
+            position: absolute; top: 20px; right: 20px; font-size: 40px; color: white;
+            cursor: pointer; background: none; border: none; padding: 0; width: 50px; height: 50px;
+            display: flex; justify-content: center; align-items: center;
+        }
+        .lightbox-nav {
+            position: absolute; top: 50%; transform: translateY(-50%); font-size: 40px; color: white;
+            cursor: pointer; background: rgba(0,0,0,0.5); border: none; padding: 10px 20px; border-radius: 5px;
+        }
+        .lightbox-prev { left: 20px; } .lightbox-next { right: 20px; }
+        .lightbox-info { color: white; margin-top: 15px; text-align: center; font-size: 0.9em; }
+    </style>
+</head>
+<body>
+    <!-- Bandeau avec l'image zones.jpg -->
+    <div id="header-banner">
+        <img src="image_generale_html/zones.jpg" alt="Zones">
+    </div>
+
+    <div id="main-content">
+        <div id="filter-options">
+            <h2>Filtres</h2>
+            <div class="filter-section">
+                <h3>Zones</h3>
+                <div id="zone-filter" class="checkbox-group"></div>
+            </div>
+            <div id="other-filters"></div>
+        </div>
+        <div id="image-gallery"></div>
+    </div>
+
+    <!-- Lightbox -->
+    <div id="lightbox">
+        <button class="lightbox-nav lightbox-prev" aria-label="Image précédente">&lt;</button>
+        <div class="lightbox-content">
+            <button class="lightbox-close" aria-label="Fermer">&times;</button>
+            <img id="lightbox-image" class="lightbox-image" src="" alt="">
+            <div class="lightbox-info" id="lightbox-info"></div>
+        </div>
+        <button class="lightbox-nav lightbox-next" aria-label="Image suivante">&gt;</button>
+    </div>
+
+    <script>
+    (function(){
+        // --- début du code modifié pour version web ---
+        class ImageGallery {
+            constructor(images) {
+                this.images = images.map(img => this.parseImageName(img));
+                this.filters = { zones: new Set(), dates: new Set(), heures: new Set(), types: new Set() };
+                this.selectedZone = 'zone01';
+                this.filteredImages = [];
+                this.currentLightboxIndex = 0;
+                this.zoomLevel = 1;
+                this.panX = 0;
+                this.panY = 0;
+                this.updateFilters();
+                this.createFilterUI();
+                this.displayImages();
+                this.setupLightbox();
+                this.filterImages();
+            }
+
+            parseImageName(filename) {
+                const [zoneRaw, dateStr, hour, typeRaw] = filename.split('-');
+                const zoneNum = zoneRaw.replace('zone', '');
+                const zone = `zone${zoneNum.padStart(2, '0')}`;
+                const day = dateStr.substring(0, 2);
+                const month = dateStr.substring(2, 4);
+                const type = typeRaw.split('.')[0];
+                return { zone, date: `${day}/${month}`, hour, type, filename };
+            }
+
+            updateFilters() {
+                this.images.forEach(img => {
+                    this.filters.zones.add(img.zone);
+                    this.filters.dates.add(img.date);
+                    this.filters.heures.add(img.hour);
+                    this.filters.types.add(img.type);
+                });
+            }
+
+            createFilterUI() {
+                const zoneFilterDiv = document.getElementById('zone-filter');
+                zoneFilterDiv.innerHTML = '';
+
+                Array.from(this.filters.zones).sort().forEach(zone => {
+                    const radioItem = document.createElement('div');
+                    radioItem.className = 'checkbox-item';
+                    const isChecked = zone === 'zone01' ? 'checked' : '';
+                    const zoneNum = zone.replace('zone', '');
+                    const zoneLabel = `zone ${parseInt(zoneNum,10)}`;
+                    radioItem.innerHTML = `
+                        <input type="radio" id="${zone}" name="zones" value="${zone}" ${isChecked}>
+                        <label for="${zone}">${zoneLabel}</label>
+                    `;
+                    zoneFilterDiv.appendChild(radioItem);
+                });
+
+                const otherFiltersDiv = document.getElementById('other-filters');
+                otherFiltersDiv.innerHTML = '';
+
+                const filterSections = [
+                    { name: 'Dates', id: 'dates', data: this.filters.dates },
+                    { name: 'Heures', id: 'heures', data: this.filters.heures },
+                    { name: 'Types', id: 'types', data: this.filters.types }
+                ];
+
+                filterSections.forEach(section => {
+                    const sectionDiv = document.createElement('div');
+                    sectionDiv.className = 'filter-section';
+                    sectionDiv.innerHTML = `<h3>${section.name}</h3>`;
+                    const checkboxGroup = document.createElement('div');
+                    checkboxGroup.className = 'checkbox-group';
+                    Array.from(section.data).sort().forEach(value => {
+                        const checkboxItem = document.createElement('div');
+                        checkboxItem.className = 'checkbox-item';
+                        checkboxItem.innerHTML = `
+                            <input type="checkbox" id="${section.id}_${value}" name="${section.id}" value="${value}" checked>
+                            <label for="${section.id}_${value}">${value}</label>
+                        `;
+                        checkboxGroup.appendChild(checkboxItem);
+                    });
+                    sectionDiv.appendChild(checkboxGroup);
+                    otherFiltersDiv.appendChild(sectionDiv);
+                });
+
+                document.querySelectorAll('input[name="zones"]').forEach(radio => {
+                    radio.addEventListener('change', (e) => {
+                        this.selectedZone = e.target.value;
+                        this.filterImages();
+                    });
+                });
+
+                document.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+                    checkbox.addEventListener('change', () => this.filterImages());
+                });
+            }
+
+            filterImages() {
+                const selectedFilters = {
+                    zones: [this.selectedZone],
+                    dates: Array.from(document.querySelectorAll('input[name="dates"]:checked')).map(cb => cb.value),
+                    heures: Array.from(document.querySelectorAll('input[name="heures"]:checked')).map(cb => cb.value),
+                    types: Array.from(document.querySelectorAll('input[name="types"]:checked')).map(cb => cb.value)
+                };
+
+                this.filteredImages = this.images.filter(img =>
+                    selectedFilters.zones.includes(img.zone) &&
+                    selectedFilters.dates.includes(img.date) &&
+                    selectedFilters.heures.includes(img.hour) &&
+                    selectedFilters.types.includes(img.type)
+                );
+
+                this.displayImages(this.filteredImages);
+            }
+
+            displayImages(imagesToShow = this.images) {
+                const gallery = document.getElementById('image-gallery');
+                gallery.innerHTML = '';
+
+                const sortedImages = imagesToShow.slice().sort((a, b) => a.filename.localeCompare(b.filename));
+                this.filteredImages = sortedImages;
+
+                sortedImages.forEach((img, index) => {
+                    const card = document.createElement('div');
+                    card.className = 'image-card';
+                    const zoneNum = img.zone.replace('zone', '');
+                    const displayZoneNum = parseInt(zoneNum,10);
+                    card.innerHTML = `
+                        <img src="vignettes/${img.filename}" alt="${img.filename}" loading="lazy">
+                        <div class="image-info">
+                            <p>Zone: ${displayZoneNum}</p>
+                            <p>Date: ${img.date}</p>
+                            <p>Heure: ${img.hour}</p>
+                            <p>Type: ${img.type}</p>
+                        </div>
+                    `;
+                    card.dataset.filename = img.filename;
+                    card.addEventListener('click', () => this.openLightboxByFilename(img.filename));
+                    gallery.appendChild(card);
+                });
+            }
+
+            loadImageAsync(src) {
+                return new Promise((resolve, reject) => {
+                    const img = new Image();
+                    img.onload = () => resolve(img);
+                    img.onerror = () => reject(new Error('Failed to load ' + src));
+                    img.src = src;
+                });
+            }
+
+            async preloadAdjacent(index) {
+                if (!this.filteredImages || this.filteredImages.length === 0) return;
+                const len = this.filteredImages.length;
+                const idxs = [index, (index - 1 + len) % len, (index + 1) % len];
+                for (const i of idxs) {
+                    const src = 'images/' + this.filteredImages[i].filename;
+                    this.loadImageAsync(src).catch(() => {});
+                }
+            }
+
+            async updateLightboxImage() {
+                if (!this.filteredImages || this.filteredImages.length === 0) {
+                    console.warn('updateLightboxImage: aucune image à afficher');
+                    this.closeLightbox();
+                    return;
+                }
+                const imgMeta = this.filteredImages[this.currentLightboxIndex];
+                if (!imgMeta) {
+                    console.error('updateLightboxImage: image introuvable à l\'index', this.currentLightboxIndex);
+                    this.closeLightbox();
+                    return;
+                }
+
+                const src = 'images/' + imgMeta.filename;
+                const lightboxImgEl = document.getElementById('lightbox-image');
+                
+                try {
+                    await this.loadImageAsync(src);
+                    lightboxImgEl.src = src;
+                } catch (err) {
+                    console.error('Erreur de chargement de l\'image lightbox', err);
+                    lightboxImgEl.src = 'vignettes/' + imgMeta.filename;
+                }
+
+                const zoneNum = imgMeta.zone.replace('zone', '');
+                const displayZoneNum = parseInt(zoneNum, 10);
+                document.getElementById('lightbox-info').innerHTML = `
+                    <p><strong>${imgMeta.filename}</strong></p>
+                    <p>Zone: ${displayZoneNum} | Date: ${imgMeta.date} | Heure: ${imgMeta.hour} | Type: ${imgMeta.type}</p>
+                    <p>${this.currentLightboxIndex + 1} / ${this.filteredImages.length}</p>
+                `;
+
+                this.preloadAdjacent(this.currentLightboxIndex);
+
+                this.zoomLevel = 1;
+                this.panX = 0;
+                this.panY = 0;
+                this.updateImageTransform();
+            }
+
+            updateImageTransform() {
+                const lightboxImgEl = document.getElementById('lightbox-image');
+                lightboxImgEl.style.transform = `scale(${this.zoomLevel}) translate(${this.panX}px, ${this.panY}px)`;
+                lightboxImgEl.style.transformOrigin = 'center center';
+                lightboxImgEl.style.cursor = this.zoomLevel > 1 ? 'grab' : 'zoom-in';
+            }
+
+            setupLightbox() {
+                const lightbox = document.getElementById('lightbox');
+                const closeBtn = document.querySelector('.lightbox-close');
+                const prevBtn = document.querySelector('.lightbox-prev');
+                const nextBtn = document.querySelector('.lightbox-next');
+
+                if (closeBtn) closeBtn.addEventListener('click', () => this.closeLightbox());
+                if (prevBtn) prevBtn.addEventListener('click', () => this.prevImage());
+                if (nextBtn) nextBtn.addEventListener('click', () => this.nextImage());
+
+                if (lightbox) {
+                    lightbox.addEventListener('click', (e) => {
+                        if (e.target === lightbox) this.closeLightbox();
+                    });
+                }
+
+                document.addEventListener('keydown', (e) => {
+                    if (!lightbox || !lightbox.classList.contains('active')) return;
+                    if (e.key === 'ArrowLeft') this.prevImage();
+                    if (e.key === 'ArrowRight') this.nextImage();
+                    if (e.key === 'Escape') this.closeLightbox();
+                });
+
+                const lightboxImg = document.getElementById('lightbox-image');
+                lightboxImg.addEventListener('wheel', (e) => {
+                    e.preventDefault();
+                    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+                    this.zoomLevel *= delta;
+                    this.zoomLevel = Math.max(0.1, Math.min(5, this.zoomLevel));
+                    this.updateImageTransform();
+                });
+
+                lightboxImg.addEventListener('dblclick', () => {
+                    this.zoomLevel = 1;
+                    this.panX = 0;
+                    this.panY = 0;
+                    this.updateImageTransform();
+                });
+
+                let isDragging = false;
+                let startX, startY;
+                lightboxImg.addEventListener('mousedown', (e) => {
+                    if (this.zoomLevel > 1) {
+                        isDragging = true;
+                        startX = e.clientX - this.panX;
+                        startY = e.clientY - this.panY;
+                        lightboxImg.style.cursor = 'grabbing';
+                        e.preventDefault();
+                    }
+                });
+                document.addEventListener('mousemove', (e) => {
+                    if (isDragging) {
+                        this.panX = e.clientX - startX;
+                        this.panY = e.clientY - startY;
+                        this.updateImageTransform();
+                    }
+                });
+                document.addEventListener('mouseup', () => {
+                    if (isDragging) {
+                        isDragging = false;
+                        this.updateImageTransform();
+                    }
+                });
+            }
+
+            closeLightbox() {
+                const lightbox = document.getElementById('lightbox');
+                if (lightbox) lightbox.classList.remove('active');
+            }
+
+            openLightbox(index) {
+                if (typeof index === 'number') {
+                    if (!this.filteredImages || this.filteredImages.length === 0) {
+                        console.warn('openLightbox: aucune image disponible');
+                        return;
+                    }
+                    this.currentLightboxIndex = Math.max(0, Math.min(index, this.filteredImages.length - 1));
+                } else {
+                    this.currentLightboxIndex = 0;
+                }
+                const lightbox = document.getElementById('lightbox');
+                lightbox.classList.add('active');
+                this.updateLightboxImage();
+            }
+
+            openLightboxByFilename(filename) {
+                if (!this.filteredImages || this.filteredImages.length === 0) {
+                    this.filteredImages = this.images.slice().sort((a, b) => a.filename.localeCompare(b.filename));
+                }
+                const idx = this.filteredImages.findIndex(i => i.filename === filename);
+                if (idx >= 0) {
+                    this.currentLightboxIndex = idx;
+                } else {
+                    const fallbackIdx = this.images.findIndex(i => i.filename === filename);
+                    if (fallbackIdx >= 0) {
+                        this.filteredImages = this.images.slice().sort((a, b) => a.filename.localeCompare(b.filename));
+                        const newIdx = this.filteredImages.findIndex(i => i.filename === filename);
+                        this.currentLightboxIndex = newIdx >= 0 ? newIdx : 0;
+                    } else {
+                        console.warn('openLightboxByFilename: filename non trouvé', filename);
+                        return;
+                    }
+                }
+
+                const lightbox = document.getElementById('lightbox');
+                lightbox.classList.add('active');
+                this.updateLightboxImage();
+            }
+
+            prevImage() {
+                if (!this.filteredImages || this.filteredImages.length === 0) return;
+                this.currentLightboxIndex = (this.currentLightboxIndex - 1 + this.filteredImages.length) % this.filteredImages.length;
+                this.updateLightboxImage();
+            }
+
+            nextImage() {
+                if (!this.filteredImages || this.filteredImages.length === 0) return;
+                this.currentLightboxIndex = (this.currentLightboxIndex + 1) % this.filteredImages.length;
+                this.updateLightboxImage();
+            }
+        }
+
+        let galleryInstance = null;
+
+        // Liste des images - À REMPLACER PAR VOS PROPRES IMAGES
+        // Copiez les noms de fichiers de vos images depuis src/images/ et src/vignettes/
+        const imageFiles = [
+            'zone01-1506-10h-05m.jpg',
+            'zone01-1506-10h-10m.jpg',
+            'zone01-1506-10h-15m.jpg',
+            'zone01-1506-10h-data.jpg',
+            'zone01-1506-13h-05m.jpg',
+            'zone01-1506-13h-10m.jpg',
+            'zone01-1506-13h-15m.jpg',
+            'zone01-1506-13h-data.jpg',
+            'zone01-1506-17h-05m.jpg',
+            'zone01-1506-17h-10m.jpg',
+            'zone01-1506-17h-15m.jpg',
+            'zone01-1506-17h-data.jpg',
+            'zone01-1507-10h-05m.jpg',
+            'zone01-1507-10h-10m.jpg',
+            'zone01-1507-10h-15m.jpg',
+            'zone01-1507-10h-data.jpg',
+            'zone01-1507-13h-05m.jpg',
+            'zone01-1507-13h-10m.jpg',
+            'zone01-1507-13h-15m.jpg',
+            'zone01-1507-13h-data.jpg',
+            'zone01-1507-17h-05m.jpg',
+            'zone01-1507-17h-10m.jpg',
+            'zone01-1507-17h-15m.jpg',
+            'zone01-1507-17h-data.jpg',
+            'zone01-1508-10h-05m.jpg',
+            'zone01-1508-10h-10m.jpg',
+            'zone01-1508-10h-15m.jpg',
+            'zone01-1508-10h-data.jpg',
+            'zone01-1508-13h-05m.jpg',
+            'zone01-1508-13h-10m.jpg',
+            'zone01-1508-13h-15m.jpg',
+            'zone01-1508-13h-data.jpg',
+            'zone01-1508-17h-05m.jpg',
+            'zone01-1508-17h-10m.jpg',
+            'zone01-1508-17h-15m.jpg',
+            'zone01-1508-17h-data.jpg',
+            'zone01-1509-10h-05m.jpg',
+            'zone01-1509-10h-10m.jpg',
+            'zone01-1509-10h-15m.jpg',
+            'zone01-1509-10h-data.jpg',
+            'zone01-1509-13h-05m.jpg',
+            'zone01-1509-13h-10m.jpg',
+            'zone01-1509-13h-15m.jpg',
+            'zone01-1509-13h-data.jpg',
+            'zone01-1509-17h-05m.jpg',
+            'zone01-1509-17h-10m.jpg',
+            'zone01-1509-17h-15m.jpg',
+            'zone01-1509-17h-data.jpg',
+            'zone02-1506-10h-05m.jpg',
+            'zone02-1506-10h-10m.jpg',
+            'zone02-1506-10h-15m.jpg',
+            'zone02-1506-10h-data.jpg',
+            'zone02-1506-13h-05m.jpg',
+            'zone02-1506-13h-10m.jpg',
+            'zone02-1506-13h-15m.jpg',
+            'zone02-1506-13h-data.jpg',
+            'zone02-1506-17h-05m.jpg',
+            'zone02-1506-17h-10m.jpg',
+            'zone02-1506-17h-15m.jpg',
+            'zone02-1506-17h-data.jpg',
+            'zone02-1507-10h-05m.jpg',
+            'zone02-1507-10h-10m.jpg',
+            'zone02-1507-10h-15m.jpg',
+            'zone02-1507-10h-data.jpg',
+            'zone02-1507-13h-05m.jpg',
+            'zone02-1507-13h-10m.jpg',
+            'zone02-1507-13h-15m.jpg',
+            'zone02-1507-13h-data.jpg',
+            'zone02-1507-17h-05m.jpg',
+            'zone02-1507-17h-10m.jpg',
+            'zone02-1507-17h-15m.jpg',
+            'zone02-1507-17h-data.jpg',
+            'zone02-1508-10h-05m.jpg',
+            'zone02-1508-10h-10m.jpg',
+            'zone02-1508-10h-15m.jpg',
+            'zone02-1508-10h-data.jpg',
+            'zone02-1508-13h-05m.jpg',
+            'zone02-1508-13h-10m.jpg',
+            'zone02-1508-13h-15m.jpg',
+            'zone02-1508-13h-data.jpg',
+            'zone02-1508-17h-05m.jpg',
+            'zone02-1508-17h-10m.jpg',
+            'zone02-1508-17h-15m.jpg',
+            'zone02-1508-17h-data.jpg',
+            'zone02-1509-10h-05m.jpg',
+            'zone02-1509-10h-10m.jpg',
+            'zone02-1509-10h-15m.jpg',
+            'zone02-1509-10h-data.jpg',
+            'zone02-1509-13h-05m.jpg',
+            'zone02-1509-13h-10m.jpg',
+            'zone02-1509-13h-15m.jpg',
+            'zone02-1509-13h-data.jpg',
+            'zone02-1509-17h-05m.jpg',
+            'zone02-1509-17h-10m.jpg',
+            'zone02-1509-17h-15m.jpg',
+            'zone02-1509-17h-data.jpg',
+            'zone03-1506-10h-05m.jpg',
+            'zone03-1506-10h-10m.jpg',
+            'zone03-1506-10h-15m.jpg',
+            'zone03-1506-10h-data.jpg',
+            'zone03-1506-13h-05m.jpg',
+            'zone03-1506-13h-10m.jpg',
+            'zone03-1506-13h-15m.jpg',
+            'zone03-1506-13h-data.jpg',
+            'zone03-1506-17h-05m.jpg',
+            'zone03-1506-17h-10m.jpg',
+            'zone03-1506-17h-15m.jpg',
+            'zone03-1506-17h-data.jpg',
+            'zone03-1507-10h-05m.jpg',
+            'zone03-1507-10h-10m.jpg',
+            'zone03-1507-10h-15m.jpg',
+            'zone03-1507-10h-data.jpg',
+            'zone03-1507-13h-05m.jpg',
+            'zone03-1507-13h-10m.jpg',
+            'zone03-1507-13h-15m.jpg',
+            'zone03-1507-13h-data.jpg',
+            'zone03-1507-17h-05m.jpg',
+            'zone03-1507-17h-10m.jpg',
+            'zone03-1507-17h-15m.jpg',
+            'zone03-1507-17h-data.jpg',
+            'zone03-1508-10h-05m.jpg',
+            'zone03-1508-10h-10m.jpg',
+            'zone03-1508-10h-15m.jpg',
+            'zone03-1508-10h-data.jpg',
+            'zone03-1508-13h-05m.jpg',
+            'zone03-1508-13h-10m.jpg',
+            'zone03-1508-13h-15m.jpg',
+            'zone03-1508-13h-data.jpg',
+            'zone03-1508-17h-05m.jpg',
+            'zone03-1508-17h-10m.jpg',
+            'zone03-1508-17h-15m.jpg',
+            'zone03-1508-17h-data.jpg',
+            'zone03-1509-10h-05m.jpg',
+            'zone03-1509-10h-10m.jpg',
+            'zone03-1509-10h-15m.jpg',
+            'zone03-1509-10h-data.jpg',
+            'zone03-1509-13h-05m.jpg',
+            'zone03-1509-13h-10m.jpg',
+            'zone03-1509-13h-15m.jpg',
+            'zone03-1509-13h-data.jpg',
+            'zone03-1509-17h-05m.jpg',
+            'zone03-1509-17h-10m.jpg',
+            'zone03-1509-17h-15m.jpg',
+            'zone03-1509-17h-data.jpg',
+            'zone04-1506-10h-05m.jpg',
+            'zone04-1506-10h-10m.jpg',
+            'zone04-1506-10h-15m.jpg',
+            'zone04-1506-10h-data.jpg',
+            'zone04-1506-13h-05m.jpg',
+            'zone04-1506-13h-10m.jpg',
+            'zone04-1506-13h-15m.jpg',
+            'zone04-1506-13h-data.jpg',
+            'zone04-1506-17h-05m.jpg',
+            'zone04-1506-17h-10m.jpg',
+            'zone04-1506-17h-15m.jpg',
+            'zone04-1506-17h-data.jpg',
+            'zone04-1507-10h-05m.jpg',
+            'zone04-1507-10h-10m.jpg',
+            'zone04-1507-10h-15m.jpg',
+            'zone04-1507-10h-data.jpg',
+            'zone04-1507-13h-05m.jpg',
+            'zone04-1507-13h-10m.jpg',
+            'zone04-1507-13h-15m.jpg',
+            'zone04-1507-13h-data.jpg',
+            'zone04-1507-17h-05m.jpg',
+            'zone04-1507-17h-10m.jpg',
+            'zone04-1507-17h-15m.jpg',
+            'zone04-1507-17h-data.jpg',
+            'zone04-1508-10h-05m.jpg',
+            'zone04-1508-10h-10m.jpg',
+            'zone04-1508-10h-15m.jpg',
+            'zone04-1508-10h-data.jpg',
+            'zone04-1508-13h-05m.jpg',
+            'zone04-1508-13h-10m.jpg',
+            'zone04-1508-13h-15m.jpg',
+            'zone04-1508-13h-data.jpg',
+            'zone04-1508-17h-05m.jpg',
+            'zone04-1508-17h-10m.jpg',
+            'zone04-1508-17h-15m.jpg',
+            'zone04-1508-17h-data.jpg',
+            'zone04-1509-10h-05m.jpg',
+            'zone04-1509-10h-10m.jpg',
+            'zone04-1509-10h-15m.jpg',
+            'zone04-1509-10h-data.jpg',
+            'zone04-1509-13h-05m.jpg',
+            'zone04-1509-13h-10m.jpg',
+            'zone04-1509-13h-15m.jpg',
+            'zone04-1509-13h-data.jpg',
+            'zone04-1509-17h-05m.jpg',
+            'zone04-1509-17h-10m.jpg',
+            'zone04-1509-17h-15m.jpg',
+            'zone04-1509-17h-data.jpg',
+            'zone05-1506-10h-05m.jpg',
+            'zone05-1506-10h-10m.jpg',
+            'zone05-1506-10h-15m.jpg',
+            'zone05-1506-10h-data.jpg',
+            'zone05-1506-13h-05m.jpg',
+            'zone05-1506-13h-10m.jpg',
+            'zone05-1506-13h-15m.jpg',
+            'zone05-1506-13h-data.jpg',
+            'zone05-1506-17h-05m.jpg',
+            'zone05-1506-17h-10m.jpg',
+            'zone05-1506-17h-15m.jpg',
+            'zone05-1506-17h-data.jpg',
+            'zone05-1507-10h-05m.jpg',
+            'zone05-1507-10h-10m.jpg',
+            'zone05-1507-10h-15m.jpg',
+            'zone05-1507-10h-data.jpg',
+            'zone05-1507-13h-05m.jpg',
+            'zone05-1507-13h-10m.jpg',
+            'zone05-1507-13h-15m.jpg',
+            'zone05-1507-13h-data.jpg',
+            'zone05-1507-17h-05m.jpg',
+            'zone05-1507-17h-10m.jpg',
+            'zone05-1507-17h-15m.jpg',
+            'zone05-1507-17h-data.jpg',
+            'zone05-1508-10h-05m.jpg',
+            'zone05-1508-10h-10m.jpg',
+            'zone05-1508-10h-15m.jpg',
+            'zone05-1508-10h-data.jpg',
+            'zone05-1508-13h-05m.jpg',
+            'zone05-1508-13h-10m.jpg',
+            'zone05-1508-13h-15m.jpg',
+            'zone05-1508-13h-data.jpg',
+            'zone05-1508-17h-05m.jpg',
+            'zone05-1508-17h-10m.jpg',
+            'zone05-1508-17h-15m.jpg',
+            'zone05-1508-17h-data.jpg',
+            'zone05-1509-10h-05m.jpg',
+            'zone05-1509-10h-10m.jpg',
+            'zone05-1509-10h-15m.jpg',
+            'zone05-1509-10h-data.jpg',
+            'zone05-1509-13h-05m.jpg',
+            'zone05-1509-13h-10m.jpg',
+            'zone05-1509-13h-15m.jpg',
+            'zone05-1509-13h-data.jpg',
+            'zone05-1509-17h-05m.jpg',
+            'zone05-1509-17h-10m.jpg',
+            'zone05-1509-17h-15m.jpg',
+            'zone05-1509-17h-data.jpg',
+            'zone06-1506-10h-05m.jpg',
+            'zone06-1506-10h-10m.jpg',
+            'zone06-1506-10h-15m.jpg',
+            'zone06-1506-10h-data.jpg',
+            'zone06-1506-13h-05m.jpg',
+            'zone06-1506-13h-10m.jpg',
+            'zone06-1506-13h-15m.jpg',
+            'zone06-1506-13h-data.jpg',
+            'zone06-1506-17h-05m.jpg',
+            'zone06-1506-17h-10m.jpg',
+            'zone06-1506-17h-15m.jpg',
+            'zone06-1506-17h-data.jpg',
+            'zone06-1507-10h-05m.jpg',
+            'zone06-1507-10h-10m.jpg',
+            'zone06-1507-10h-15m.jpg',
+            'zone06-1507-10h-data.jpg',
+            'zone06-1507-13h-05m.jpg',
+            'zone06-1507-13h-10m.jpg',
+            'zone06-1507-13h-15m.jpg',
+            'zone06-1507-13h-data.jpg',
+            'zone06-1507-17h-05m.jpg',
+            'zone06-1507-17h-10m.jpg',
+            'zone06-1507-17h-15m.jpg',
+            'zone06-1507-17h-data.jpg',
+            'zone06-1508-10h-05m.jpg',
+            'zone06-1508-10h-10m.jpg',
+            'zone06-1508-10h-15m.jpg',
+            'zone06-1508-10h-data.jpg',
+            'zone06-1508-13h-05m.jpg',
+            'zone06-1508-13h-10m.jpg',
+            'zone06-1508-13h-15m.jpg',
+            'zone06-1508-13h-data.jpg',
+            'zone06-1508-17h-05m.jpg',
+            'zone06-1508-17h-10m.jpg',
+            'zone06-1508-17h-15m.jpg',
+            'zone06-1508-17h-data.jpg',
+            'zone06-1509-10h-05m.jpg',
+            'zone06-1509-10h-10m.jpg',
+            'zone06-1509-10h-15m.jpg',
+            'zone06-1509-10h-data.jpg',
+            'zone06-1509-13h-05m.jpg',
+            'zone06-1509-13h-10m.jpg',
+            'zone06-1509-13h-15m.jpg',
+            'zone06-1509-13h-data.jpg',
+            'zone06-1509-17h-05m.jpg',
+            'zone06-1509-17h-10m.jpg',
+            'zone06-1509-17h-15m.jpg',
+            'zone06-1509-17h-data.jpg',
+            'zone07-1506-10h-05m.jpg',
+            'zone07-1506-10h-10m.jpg',
+            'zone07-1506-10h-15m.jpg',
+            'zone07-1506-10h-data.jpg',
+            'zone07-1506-13h-05m.jpg',
+            'zone07-1506-13h-10m.jpg',
+            'zone07-1506-13h-15m.jpg',
+            'zone07-1506-13h-data.jpg',
+            'zone07-1506-17h-05m.jpg',
+            'zone07-1506-17h-10m.jpg',
+            'zone07-1506-17h-15m.jpg',
+            'zone07-1506-17h-data.jpg',
+            'zone07-1507-10h-05m.jpg',
+            'zone07-1507-10h-10m.jpg',
+            'zone07-1507-10h-15m.jpg',
+            'zone07-1507-10h-data.jpg',
+            'zone07-1507-13h-05m.jpg',
+            'zone07-1507-13h-10m.jpg',
+            'zone07-1507-13h-15m.jpg',
+            'zone07-1507-13h-data.jpg',
+            'zone07-1507-17h-05m.jpg',
+            'zone07-1507-17h-10m.jpg',
+            'zone07-1507-17h-15m.jpg',
+            'zone07-1507-17h-data.jpg',
+            'zone07-1508-10h-05m.jpg',
+            'zone07-1508-10h-10m.jpg',
+            'zone07-1508-10h-15m.jpg',
+            'zone07-1508-10h-data.jpg',
+            'zone07-1508-13h-05m.jpg',
+            'zone07-1508-13h-10m.jpg',
+            'zone07-1508-13h-15m.jpg',
+            'zone07-1508-13h-data.jpg',
+            'zone07-1508-17h-05m.jpg',
+            'zone07-1508-17h-10m.jpg',
+            'zone07-1508-17h-15m.jpg',
+            'zone07-1508-17h-data.jpg',
+            'zone07-1509-10h-05m.jpg',
+            'zone07-1509-10h-10m.jpg',
+            'zone07-1509-10h-15m.jpg',
+            'zone07-1509-10h-data.jpg',
+            'zone07-1509-13h-05m.jpg',
+            'zone07-1509-13h-10m.jpg',
+            'zone07-1509-13h-15m.jpg',
+            'zone07-1509-13h-data.jpg',
+            'zone07-1509-17h-05m.jpg',
+            'zone07-1509-17h-10m.jpg',
+            'zone07-1509-17h-15m.jpg',
+            'zone07-1509-17h-data.jpg',
+            'zone08-1506-10h-05m.jpg',
+            'zone08-1506-10h-10m.jpg',
+            'zone08-1506-10h-15m.jpg',
+            'zone08-1506-10h-data.jpg',
+            'zone08-1506-13h-05m.jpg',
+            'zone08-1506-13h-10m.jpg',
+            'zone08-1506-13h-15m.jpg',
+            'zone08-1506-13h-data.jpg',
+            'zone08-1506-17h-05m.jpg',
+            'zone08-1506-17h-10m.jpg',
+            'zone08-1506-17h-15m.jpg',
+            'zone08-1506-17h-data.jpg',
+            'zone08-1507-10h-05m.jpg',
+            'zone08-1507-10h-10m.jpg',
+            'zone08-1507-10h-15m.jpg',
+            'zone08-1507-10h-data.jpg',
+            'zone08-1507-13h-05m.jpg',
+            'zone08-1507-13h-10m.jpg',
+            'zone08-1507-13h-15m.jpg',
+            'zone08-1507-13h-data.jpg',
+            'zone08-1507-17h-05m.jpg',
+            'zone08-1507-17h-10m.jpg',
+            'zone08-1507-17h-15m.jpg',
+            'zone08-1507-17h-data.jpg',
+            'zone08-1508-10h-05m.jpg',
+            'zone08-1508-10h-10m.jpg',
+            'zone08-1508-10h-15m.jpg',
+            'zone08-1508-10h-data.jpg',
+            'zone08-1508-13h-05m.jpg',
+            'zone08-1508-13h-10m.jpg',
+            'zone08-1508-13h-15m.jpg',
+            'zone08-1508-13h-data.jpg',
+            'zone08-1508-17h-05m.jpg',
+            'zone08-1508-17h-10m.jpg',
+            'zone08-1508-17h-15m.jpg',
+            'zone08-1508-17h-data.jpg',
+            'zone08-1509-10h-05m.jpg',
+            'zone08-1509-10h-10m.jpg',
+            'zone08-1509-10h-15m.jpg',
+            'zone08-1509-10h-data.jpg',
+            'zone08-1509-13h-05m.jpg',
+            'zone08-1509-13h-10m.jpg',
+            'zone08-1509-13h-15m.jpg',
+            'zone08-1509-13h-data.jpg',
+            'zone08-1509-17h-05m.jpg',
+            'zone08-1509-17h-10m.jpg',
+            'zone08-1509-17h-15m.jpg',
+            'zone08-1509-17h-data.jpg'
+        ];
+
+        document.addEventListener('DOMContentLoaded', () => {
+            if (imageFiles.length > 0) {
+                galleryInstance = new ImageGallery(imageFiles);
+            } else {
+                document.getElementById('image-gallery').innerHTML = 
+                    '<p>Aucune image configurée. Modifiez la liste imageFiles dans le code pour ajouter vos images.</p>';
+            }
+        });
+        // --- fin du code modifié ---
+    })();
+    </script>
+</body>
+</html>
